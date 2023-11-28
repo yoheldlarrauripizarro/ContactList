@@ -3,15 +3,21 @@ package br.edu.scl.ifsp.sdm.contactlist.view
 import android.content.Intent
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
+import android.view.ContextMenu
 import android.view.Menu
 import android.view.MenuItem
+import android.view.View
+import android.widget.AdapterView.AdapterContextMenuInfo
 import android.widget.ArrayAdapter
+import android.widget.Toast
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import br.edu.scl.ifsp.sdm.contactlist.R
+import br.edu.scl.ifsp.sdm.contactlist.adapter.ContactAdapter
 import br.edu.scl.ifsp.sdm.contactlist.databinding.ActivityContactBinding
 import br.edu.scl.ifsp.sdm.contactlist.databinding.ActivityMainBinding
 import br.edu.scl.ifsp.sdm.contactlist.model.Constant.EXTRA_CONTACT
+import br.edu.scl.ifsp.sdm.contactlist.model.Constant.EXTRA_VIEW_CONTACT
 import br.edu.scl.ifsp.sdm.contactlist.model.Contact
 
 class MainActivity : AppCompatActivity() {
@@ -21,8 +27,8 @@ class MainActivity : AppCompatActivity() {
 
     private val contactList: MutableList<Contact> = mutableListOf()
 
-    private val contactAdapter: ArrayAdapter<String> by lazy {
-        ArrayAdapter(this,android.R.layout.simple_list_item_1, contactList.map { it.toString() })
+    private val contactAdapter: ContactAdapter by lazy {
+        ContactAdapter(this, contactList)
     }
 
     private lateinit var carl: ActivityResultLauncher<Intent>
@@ -36,12 +42,12 @@ class MainActivity : AppCompatActivity() {
         carl = registerForActivityResult(ActivityResultContracts.StartActivityForResult()){result ->
             if(result.resultCode == RESULT_OK){
                 val contact = result.data?.getParcelableExtra<Contact>(EXTRA_CONTACT)
-                contact?.also {
-                    if(contactList.any{it.id == contact.id}){
-
+                contact?.also {newOrEditedContact ->
+                    if(contactList.any{it.id == newOrEditedContact.id}){
+                        val position = contactList.indexOfFirst { it.id == newOrEditedContact.id }
+                        contactList[position] = newOrEditedContact
                     }else{
-                        contactList.add(contact)
-                        contactAdapter.add(contact.toString())
+                        contactList.add(newOrEditedContact)
                     }
                     contactAdapter.notifyDataSetChanged()
                 }
@@ -50,6 +56,15 @@ class MainActivity : AppCompatActivity() {
         fillContacts()
 
         amb.contactsLv.adapter=contactAdapter
+        registerForContextMenu(amb.contactsLv)
+
+        amb.contactsLv.setOnItemClickListener { _, _, position, _ ->
+            startActivity(Intent(this,ContactActivity::class.java).apply {
+                putExtra(EXTRA_CONTACT, contactList[position])
+                putExtra(EXTRA_VIEW_CONTACT, true)
+            })
+
+        }
     }
 
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
@@ -65,6 +80,38 @@ class MainActivity : AppCompatActivity() {
             }
             else->{ false }
         }
+    }
+
+    override fun onCreateContextMenu(
+        menu: ContextMenu?,
+        v: View?,
+        menuInfo: ContextMenu.ContextMenuInfo?
+    ) {
+        menuInflater.inflate(R.menu.context_menu_main,menu)
+    }
+
+    override fun onContextItemSelected(item: MenuItem): Boolean {
+        val position = (item.menuInfo as AdapterContextMenuInfo).position
+        return when(item.itemId) {
+            R.id.removeContactMi -> {
+                contactList.removeAt(position)
+                contactAdapter.notifyDataSetChanged()
+                Toast.makeText(this, getString(R.string.contact_removed), Toast.LENGTH_SHORT).show()
+                true
+            }
+            R.id.editContactMi -> {
+                carl.launch(Intent(this, ContactActivity::class.java).apply {
+                    putExtra(EXTRA_CONTACT, contactList[position])
+                })
+                true
+            }
+            else -> { false }
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        unregisterForContextMenu(amb.contactsLv)
     }
     private fun fillContacts(){
         for (i in 1..10){
